@@ -7,6 +7,7 @@ from lxml import etree
 from . import discover
 from . import exc
 from . import template
+from . import volume
 
 log = logging.getLogger(__name__)
 
@@ -58,27 +59,6 @@ def find_cloud_image(pool, distro, distroversion, arch):
     return max(names)
 
 
-def upload_volume(vol, fp, sha512):
-    """
-    Upload a volume into a libvirt pool.
-    """
-
-    h = hashlib.sha512()
-    stream = vol.connect().newStream(flags=0)
-    vol.upload(stream=stream, offset=0, length=0, flags=0)
-
-    def handler(stream, nbytes, _):
-        data = fp.read(nbytes)
-        h.update(data)
-        return data
-    stream.sendAll(handler, None)
-
-    if h.hexdigest() != sha512:
-        stream.abort()
-        raise exc.ImageHashMismatchError()
-    stream.finish()
-
-
 def ensure_cloud_image(conn, distro, distroversion, arch):
     """
     Ensure that the Ubuntu Cloud image is in the libvirt pool.
@@ -114,21 +94,7 @@ def ensure_cloud_image(conn, distro, distroversion, arch):
         serial=image['serial'],
         suffix=SUFFIX,
         )
-    log.debug('Creating libvirt volume: %s ...', name)
-    volxml = template.volume(
-        name=name,
-        # TODO we really should feed in a capacity, but we don't know
-        # what it should be.. libvirt pool refresh figures it out, but
-        # that's probably expensive
-        # capacity=2*1024*1024,
-        )
-    vol = pool.createXML(etree.tostring(volxml), flags=0)
-    upload_volume(
-        vol=vol,
-        fp=r.raw,
-        sha512=image['sha512'],
-        )
-    # TODO only here to autodetect capacity
-    pool.refresh(flags=0)
-    return vol
+    return volume.create_volume(pool, name, r.raw,
+                                hash_function='sha512',
+                                checksum=image['sha512'])
 

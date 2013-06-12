@@ -6,7 +6,7 @@ from lxml import etree
 
 from . import meta
 from . import template
-
+from . import volume
 
 def generate_meta_iso(
     name,
@@ -39,19 +39,6 @@ def generate_meta_iso(
             close_fds=True,
             )
 
-
-def upload_volume(vol, length, fp):
-    # TODO share with image.upload_volume
-    stream = vol.connect().newStream(flags=0)
-    vol.upload(stream=stream, offset=0, length=length, flags=0)
-
-    def handler(stream, nbytes, _):
-        data = fp.read(nbytes)
-        return data
-    stream.sendAll(handler, None)
-    stream.finish()
-
-
 def create_meta_iso(
     pool,
     name,
@@ -68,15 +55,8 @@ def create_meta_iso(
         iso.seek(0)
         length = os.fstat(iso.fileno()).st_size
         assert length > 0
-        volxml = template.volume(
-            name='cloud-init.{name}.iso'.format(name=name),
-            capacity=length,
-            format_='raw',
-            )
-        vol = pool.createXML(etree.tostring(volxml), flags=0)
-        upload_volume(
-            vol=vol,
-            length=length,
+        return volume.create_volume(pool,
+            'cloud-init.{name}.iso'.format(name=name),
             fp=iso,
-            )
-        return vol
+            format_='raw')
+
